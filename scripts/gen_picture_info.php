@@ -1,80 +1,63 @@
 <?php
-/* $Id$ */
+$time_start = microtime(true);
 
 include '../include/jpgraph/src/jpgraph.php';
 include '../include/jpgraph/src/jpgraph_pie.php';
 include '../include/jpgraph/src/jpgraph_pie3d.php';
 
-$inCli = true;
 include '../include/init.inc.php';
 include '../include/lib_revcheck.inc.php';
+include '../include/lib_proj_lang.inc.php';
 
-$self = array_shift($argv);
+$idx = new SQLite3(SQLITE_DIR . 'rev.php.sqlite');
 
-$TYPE = array_shift($argv); // Type of documentation
-$LANGS = $argv;
+$available_langs = revcheck_available_languages($idx);
 
-// generate all languages
-if (count($LANGS) == 0) {
-    include "../include/lib_proj_lang.inc.php";
-    $LANGS = array_keys($LANGUAGES);
-}
-
-
-foreach ($LANGS as $lang) {
-    if ($lang === 'en' || $lang === 'all') {
-        continue;
-    }
-    if (!generation_image($TYPE, $lang) ) {
-        echo "The $TYPE documentation for $lang language does not exist.\n";
+$langs = array_keys($LANGUAGES);
+foreach ($langs as $lang) {
+    if (!in_array($lang, $available_langs)) {
+        echo "Documentation for $lang language does not exist.\n";
     } else {
-        echo " Generated images/revcheck/info_revcheck_" . $TYPE . "_" . $lang . ".png\n";
+        generate_image($lang, $idx);
+        echo "Generated images/revcheck/info_revcheck_php_$lang.png\n";
     }
 }
 
+$time = round(microtime(true) - $time_start, 3);
+echo "Graphs generated in {$time}s\n";
 
-function generation_image($TYPE, $lang) {
+function generate_image($lang, $idx) {
     global $LANGUAGES;
 
-    $idx = sqlite_open(SQLITE_DIR . 'rev.' . $TYPE . '.sqlite');
-    $Total_files = @get_nb_LANG_files($idx);
-    if (!isset($Total_files[$lang]) ) {
-        return FALSE;
-    }
-
-
-    $Total_files_lang = $Total_files[$lang];
+    $up_to_date = get_stats($idx, $lang, 'uptodate');
+    $up_to_date = $up_to_date[0];
     //
-    $up_to_date = @get_nb_LANG_files_Translated($idx, $lang);
-    $up_to_date = ( $up_to_date['total'] == '') ? 0 : $up_to_date['total'];
+    $outdated = @get_stats($idx, $lang, 'outdated');
+    $outdated = $outdated[0];
     //
-    $critical = @get_stats_critical($idx, $lang);
-    $critical = $critical[0];
+    $missing = get_stats($idx, $lang, 'notrans');
+    $missing = $missing[0];
     //
-    $old = @get_stats_old($idx, $lang);
-    $old = $old[0];
-    //
-    $missing = sizeof(@get_missfiles($idx, $lang));
-    //
-    $no_tag = @get_stats_notag($idx, $lang);
+    $no_tag = @get_stats($idx, $lang, 'norev');
     $no_tag = $no_tag[0];
-    //
 
-    $data = array($up_to_date,$critical,$old,$missing,$no_tag);
-    $pourcent = array();
-    $total = 0;
-    $total = array_sum($data);
+    $data = array(
+        $up_to_date,
+        $outdated,
+        $missing,
+        $no_tag
+    );
 
-    foreach ( $data as $valeur ) {
+    $percent = array();
+    $total = array_sum($data); // Total ammount in EN manual (to calculate percentage values)
+    $total_files_lang = $total - $missing; // Total ammount of files in translation
 
-        $pourcent[] = round($valeur * 100 / $total);
-
+    foreach ($data as $value) {
+        $percent[] = round($value * 100 / $total);
     }
-    
-    $noExplode = ($Total_files_lang == $up_to_date) ? 1 : 0;
 
-    $legend = array($pourcent[0] . '%% up to date ('.$up_to_date.')', $pourcent[1] . '%% critical ('.$critical.')', $pourcent[2] . '%% old ('.$old.')', $pourcent[3] . '%% missing ('.$missing.')', $pourcent[4] . '%% without revtag ('.$no_tag.')');
-    $title = ucfirst($TYPE). ' : Details for '.$LANGUAGES[$lang].' Doc';
+    $legend = array($percent[0] . '%% up to date ('.$up_to_date.')', $percent[1] . '%% outdated ('.$outdated.')', $percent[2] . '%% missing ('.$missing.')', $percent[3] . '%% without EN-Revision ('.$no_tag.')');
+    $title = 'Details for '.$LANGUAGES[$lang].' PHP Manual';
 
     $graph = new PieGraph(530,300);
     $graph->SetShadow();
@@ -85,7 +68,7 @@ function generation_image($TYPE, $lang) {
 
     $graph->legend->Pos(0.02,0.18,"right","center");
 
-    $graph->subtitle->Set('(Total: '.$Total_files_lang.' files)');
+    $graph->subtitle->Set('(Total: '.$total_files_lang.' files)');
     $graph->subtitle->Align('left');
     $graph->subtitle->SetColor('darkred');
 
@@ -97,8 +80,8 @@ function generation_image($TYPE, $lang) {
     $graph->AddText($t1);
 
     $p1 = new PiePlot3D($data);
-    $p1->SetSliceColors(array("#68d888", "#ff6347", "#eee8aa", "#dcdcdc", "#f4a460"));
-    if ($noExplode != 1) {
+    $p1->SetSliceColors(array("#68d888", "#ff6347", "#dcdcdc", "#f4a460"));
+    if ($total_files_lang != $up_to_date) {
        $p1->ExplodeAll();
     }
     $p1->SetCenter(0.35,0.55);
@@ -107,8 +90,5 @@ function generation_image($TYPE, $lang) {
     $p1->SetLegends($legend);
 
     $graph->Add($p1);
-    $graph->Stroke('../www/images/revcheck/info_revcheck_' . $TYPE . '_' . $lang . '.png');
-
-
-    return TRUE;
+    $graph->Stroke("../www/images/revcheck/info_revcheck_php_$lang.png");
 }

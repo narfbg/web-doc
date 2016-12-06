@@ -24,19 +24,9 @@ $Id$
 
 // split from lib_general.inc.php
 
-// Map of supported documentation types to CVS module names
-$PROJECTS = array(
-// project => (Name, local folder, cvs module)
-    'www'      => array('Documentation',         '',        ''),
-    'php'      => array('PHP Documentation',     DOC_DIR,  'phpdoc/en'),
-    'pear'     => array('PEAR Documentation',    PEAR_DIR, 'peardoc/en'),
-    'gtk'      => array('PHP-GTK Documentation', GTK_DIR, 'php-gtk-doc/manual/en'),
-    'phd'      => array('phd',                   '',        ''),
-);
-
 // Supported languages
+// DO NOT insert English here - it is only for translations!
 $LANGUAGES = array(
-    'all'   => 'All',
     'ar'    => 'Arabic',
     'pt_BR' => 'Brazilian Portuguese',
     'bg'    => 'Bulgarian',
@@ -67,69 +57,5 @@ $LANGUAGES = array(
     'es'    => 'Spanish',
     'sv'    => 'Swedish',
     'tr'    => 'Turkish',
-    'en'    => 'English',
+    'uk'    => 'Ukrainian',
 );
-
-$COUNTRIES = array(
-    "US" => "United States",
-    "AI" => "Anguilla",
-    "AR" => "Argentina",
-    "AU" => "Australia",
-    "AT" => "Austria",
-    "BY" => "Belarus",
-    "BE" => "Belgium",
-    "BR" => "Brazil",
-    "BG" => "Bulgaria",
-    "CA" => "Canada",
-    "CL" => "Chile",
-    "C2" => "China",
-    "CR" => "Costa Rica",
-    "CY" => "Cyprus",
-    "CZ" => "Czech Republic",
-    "DK" => "Denmark",
-    "DO" => "Dominican Republic",
-    "EC" => "Ecuador",
-    "EE" => "Estonia",
-    "FI" => "Finland",
-    "FR" => "France",
-    "DE" => "Germany",
-    "GR" => "Greece",
-    "HK" => "Hong Kong",
-    "HU" => "Hungary",
-    "IS" => "Iceland",
-    "IN" => "India",
-    "IE" => "Ireland",
-    "IL" => "Israel",
-    "IT" => "Italy",
-    "JM" => "Jamaica",
-    "JP" => "Japan",
-    "LV" => "Latvia",
-    "LT" => "Lithuania",
-    "LU" => "Luxembourg",
-    "MY" => "Malaysia",
-    "MT" => "Malta",
-    "MX" => "Mexico",
-    "NL" => "Netherlands",
-    "NZ" => "New Zealand",
-    "NO" => "Norway",
-    "PL" => "Poland",
-    "PT" => "Portugal",
-    "RU" => "Russia",
-    "RS" => "Serbia",
-    "SG" => "Singapore",
-    "SK" => "Slovakia",
-    "SI" => "Slovenia",
-    "ZA" => "South Africa",
-    "KR" => "South Korea",
-    "ES" => "Spain",
-    "SE" => "Sweden",
-    "CH" => "Switzerland",
-    "TW" => "Taiwan",
-    "TH" => "Thailand",
-    "TR" => "Turkey",
-    "GB" => "United Kingdom",
-    "UY" => "Uruguay",
-    "VE" => "Venezuela",
-);
-
-?>

@@ -1,9 +1,9 @@
 <?php
 /*
 +----------------------------------------------------------------------+
-| PHP Version 4                                                        |
+| PHP Documentation Tools Site Source Code                             |
 +----------------------------------------------------------------------+
-| Copyright (c) 1997-2011 The PHP Group                                |
+| Copyright (c) 1997-2014 The PHP Group                                |
 +----------------------------------------------------------------------+
 | This source file is subject to version 3.0 of the PHP license,       |
 | that is bundled with this package in the file LICENSE, and is        |
@@ -18,98 +18,41 @@
 |                   Mark Kronsbein    <mk at php dot net>              |
 |                   Jan Fabry     <cheezy at php dot net>              |
 | SQLite version Authors:                                              |
-|                   Mehdi Achour   <didou at php dot net>              |
+|                   Mehdi Achour         <didou at php dot net>        |
+|                   Maciej Sobaczewski   <sobak at php dot net>        |
 +----------------------------------------------------------------------+
-
 */
 
 error_reporting(E_ALL);
 set_time_limit(0);
-/**
-*   Usage
-**/
 
-// keep this call, we need it
-$self = array_shift($argv);
-
-if ($argc < 2) {
-?>
-  Usage:
-    <?php echo $self;?> type [lang1 [lang2 [lang3 [..]]]]
-
-  Checks the revision of translated files against the actual english
-  xml files, and create an sqlite database to generate statisctics
-  
-  type should be a registered documentation type in 
-  <?php echo dirname($self);?>/common.php
-
-  langN should be a valid language code used in the documentation
-  repository
-
-  Read more about Revision comments and related functionality in 
-  the PHP Documentation Howto :
-    http://php.net/manual/howto/translation-revtrack.html (9.4.2)
-
-<?php
-exit(0);
-}
-
-/**
-*   Configuration
-**/
-
-// define some common variables
-$inCli = true;
+// include required files
 include '../include/init.inc.php';
+include '../include/lib_proj_lang.inc.php';
 
-// grab the documentation type
-$TYPE = array_shift($argv);
+$DOCS = SVN_DIR . DOC_DIR . '/';
 
-if (!in_array($TYPE, array('php', 'pear'))) {
-    echo "Error: The revcheck script is not available yet for $TYPE\n";
-    exit(0);
-}
-
-$DOCS = SVN_DIR . get_svn_dir($TYPE);
-
-// $argv was shifted before
-$LANGS = $argv;
-
-// generate all languages
-if (count($LANGS) == 0) {
-    include "../include/lib_proj_lang.inc.php";
-    $LANGS = array_keys($LANGUAGES);
-}
-
-// Test the languages :
+// Test the languages:
+$LANGS = array_keys($LANGUAGES);
 $langc = count($LANGS);
 for ($i = 0; $i < $langc; $i++) {
-    // make sure we don't parse the en tree
-    if ($LANGS[$i] == 'en') {
-        unset($LANGS[$i]);
-        continue;
-    }
-    
     if (!is_dir($DOCS . $LANGS[$i])) {
-        echo "Error: the \"{$LANGS[$i]}\" lang doesn't exist for $TYPE in dir {$DOCS}, skipping..\n";
+        echo "Error: the \"{$LANGS[$i]}\" lang doesn't exist in dir {$DOCS}, skipping..\n";
         unset($LANGS[$i]);
     }
 }
-if (count($LANGS) == 0)
-{
+if (count($LANGS) == 0) {
     echo "Error: No language to revcheck, exiting.\n";
-    exit(0);
+    exit;
 }
 
 $SQL_BUFF = "INSERT INTO dirs (id, name) VALUES (1, '/');\n";
 
-$CREATE =<<<SQL
+$CREATE = <<<SQL
 
 CREATE TABLE description (
   lang TEXT,
   intro TEXT,
-  date TEXT,
-  charset TEXT,
   UNIQUE (lang)
 );
 
@@ -135,23 +78,29 @@ CREATE TABLE dirs (
   UNIQUE (name)
 );
 
+CREATE INDEX dirs_1 ON dirs (id);
+
 CREATE TABLE files (
-    lang TEXT,
-    dir TEXT,
-    name TEXT,
-    revision TEXT,
-    size TEXT,
-    mdate TEXT,
-    maintainer TEXT,
-    status TEXT,
-    UNIQUE(lang, dir, name)
+  lang TEXT,
+  dir TEXT,
+  name TEXT,
+  revision TEXT,
+  size TEXT,
+  mdate TEXT,
+  maintainer TEXT,
+  status TEXT,
+  UNIQUE(lang, dir, name)
 );
 
+CREATE INDEX files_1 ON files (dir, name);
+CREATE INDEX files_2 ON files (lang, revision, size, dir);
+CREATE INDEX files_3 ON files (lang, size, mdate, revision, size, dir);
+
 CREATE TABLE old_files (
-    lang TEXT,
-    dir TEXT,
-    file TEXT,
-    size INT
+  lang TEXT,
+  dir TEXT,
+  file TEXT,
+  size INT
 );
 
 SQL;
@@ -162,14 +111,14 @@ SQL;
 
 function parse_translation($lang)
 {
-    global $SQL_BUFF, $DOCS;
+    global $SQL_BUFF, $DOCS, $LANGUAGES;
     echo "Parsing intro..\n";
 
     // Path to find translation.xml file, set default values,
     // in case we can't find the translation file
     $translation_xml = $DOCS . $lang . "/translation.xml";
 
-    $intro = "No intro available for the $lang translation of the manual";
+    $intro = "No intro available for the {$LANGUAGES[$lang]} translation of the manual.";
     $charset  = 'iso-8859-1';
 
     if (file_exists($translation_xml)) {
@@ -190,21 +139,26 @@ function parse_translation($lang)
 
         // Get intro text
         if (preg_match("!<intro>(.+)</intro>!s", $txml, $match)) {
-            $intro = @iconv($charset, 'UTF-8//IGNORE', trim($match[1]));
+            $intro = SQLite3::escapeString(@iconv($charset, 'UTF-8//IGNORE', trim($match[1])));
         }
     }
 
-    $SQL_BUFF .= "INSERT INTO description VALUES ('$lang', '" . sqlite_escape_string($intro) . "', DATE(), '$charset');\n";
+    $SQL_BUFF .= "INSERT INTO description VALUES ('$lang', '$intro');\n";
 
     if (isset($txml)) {
         // Find all persons matching the pattern
         if (preg_match_all("!<person (.+)/\\s?>!U", $txml, $matches)) {
-            $default = array('svn' => 'n/a', 'nick' => 'n/a', 'editor' => 'n/a', 'email' => 'n/a', 'name' => 'n/a');
+            $default = array('vcs' => 'n/a', 'nick' => 'n/a', 'editor' => 'n/a', 'email' => 'n/a', 'name' => 'n/a');
             $persons = parse_attr_string($matches[1]);
 
             foreach ($persons as $person) {
                 $person = array_merge($default, $person);
-                $SQL_BUFF .= "INSERT INTO translators VALUES ('$lang', '" . sqlite_escape_string($person['nick']) . "', '" . sqlite_escape_string(@iconv($charset, 'UTF-8//IGNORE', $person['name'])) . "', '" . sqlite_escape_string($person['email']) . "', '" . sqlite_escape_string($person['svn']) . "', '" . sqlite_escape_string($person['editor']) . "');\n";
+                $nick   = SQLite3::escapeString($person['nick']);
+                $name   = SQLite3::escapeString(@iconv($charset, 'UTF-8//IGNORE', $person['name']));
+                $email  = SQLite3::escapeString($person['email']);
+                $vcs    = SQLite3::escapeString($person['vcs']);
+                $editor = SQLite3::escapeString($person['editor']);
+                $SQL_BUFF .= "INSERT INTO translators VALUES ('$lang', '$nick', '$name', '$email', '$vcs', '$editor');\n";
             }
         }
 
@@ -212,7 +166,10 @@ function parse_translation($lang)
         if (preg_match_all("!<file(.+)/\\s?>!U", $txml, $matches)) {
             $files = parse_attr_string($matches[1]);
             foreach ($files as $file) {
-                $SQL_BUFF .= "INSERT INTO wip VALUES ('$lang', '" . sqlite_escape_string($file['name']) . "', '" . sqlite_escape_string($file['person']) . "', '" . sqlite_escape_string(isset($file['type']) ? $file['type'] : 'translation') . "');\n";
+                $name = SQLite3::escapeString($file['name']);
+                $person = SQLite3::escapeString($file['person']);
+                $type = SQLite3::escapeString(isset($file['type']) ? $file['type'] : 'translation');
+                $SQL_BUFF .= "INSERT INTO wip VALUES ('$lang', '$name', '$person', '$type');\n";
             }
         }
     }
@@ -315,9 +272,7 @@ function do_revcheck($dir = '') {
 
         // Files first
         if (sizeof($entriesFiles) > 0 ) {
-
             foreach($entriesFiles as $file) {
-
                 $path = $DOCS . 'en' . $dir . '/' . $file;
 
                 $size = intval(filesize($path) / 1024);
@@ -328,10 +283,8 @@ function do_revcheck($dir = '') {
                 $SQL_BUFF .= "INSERT INTO files VALUES ('en', '$id', '$file', $revision, '$size','$date', NULL, NULL);\n";
 
                 foreach ($LANGS as $lang) {
-
                     $path = $DOCS . $lang . $dir . '/' . $file;
                     if (is_file($path)) {
-
                         $size = intval(filesize($path) / 1024);
                         $date = filemtime($path);
                         list($revision, $maintainer, $status) = get_tags($path);
@@ -346,19 +299,16 @@ function do_revcheck($dir = '') {
 
         // Directories..
         if (sizeof($entriesDir) > 0) {
-
             usort($entriesDir, 'dir_sort');
             reset($entriesDir);
 
             foreach ($entriesDir as $Edir) {
-
                 $path = $DOCS . 'en/' . $dir . '/' . $Edir;
                 $id++;
                 echo "Adding directory: $dir/$Edir (id: $id)\n";
 
                 $SQL_BUFF .= "INSERT INTO dirs VALUES (" . $id . ", '$dir/$Edir');\n";
                 do_revcheck($dir . '/' . $Edir);
-
             }
         }
     }
@@ -403,22 +353,18 @@ function check_old_files($dir = '', $lang) {
         if (sizeof($entriesFiles) > 0 ) {
 
             foreach($entriesFiles as $file) {
-
                 $path_en = $DOCS . 'en/' . $dir . '/' . $file;
                 $path = $DOCS . $lang . $dir . '/' . $file;
 
                 if( !@is_file($path_en) ) {
-
                    $size = intval(filesize($path) / 1024);
                    $SQL_BUFF .= "INSERT INTO old_files VALUES ('$lang', '$dir', '$file', '$size');\n";
-
                 }
             }
         }
 
         // Directories..
         if (sizeof($entriesDir) > 0) {
-
             usort($entriesDir, 'dir_sort_old');
             reset($entriesDir);
 
@@ -430,17 +376,15 @@ function check_old_files($dir = '', $lang) {
     closedir($dh);
 }
 
-function get_tags($file)
-{
+function get_tags($file) {
     // Read the first 500 chars. The comment should be at
     // the begining of the file
-    $fp = @fopen($file, "r") or die ("Unable to read $file.");
+    $fp = @fopen($file, "r") or die("Unable to read $file.");
     $line = fread($fp, 500);
     fclose($fp);
 
     // No match before the preg
     $match = array ();
-
 
     // Check for the translations "revision tag"
     if (preg_match("/<!--\s*EN-Revision:\s*(\d+)\s*Maintainer:\s*(\\S*)\s*Status:\s*(.+)\s*-->/U",
@@ -462,8 +406,7 @@ function get_tags($file)
 
 } // get_tags() function end
 
-function get_original_rev($file)
-{
+function get_original_rev($file) {
     // Read the first 500 chars. The comment should be at
     // the begining of the file
     $fp = @fopen($file, "r") or die ("Unable to read $file.");
@@ -480,41 +423,40 @@ function get_original_rev($file)
     }
 }
 
-
-function getmicrotime()
-{
-    list($usec, $sec) = explode(" ", microtime());
-    return ((float)$usec + (float)$sec);
-}
-
 /**
 *   Script execution
 **/
 
-$time_start = getmicrotime();
+$time_start = microtime(true);
 
-$db_name = SQLITE_DIR . 'rev.' . $TYPE . '.sqlite';
-$tmp_db = SQLITE_DIR . 'rev.' . $TYPE . '.tmp.sqlite';
+$db_name = SQLITE_DIR . 'rev.php.sqlite';
+$tmp_db = SQLITE_DIR . 'rev.php.tmp.sqlite';
 
 // 1 - Drop the old database and create the new one
 if (is_file($tmp_db)) {
-
-    echo "Temporary database found : remove.\n";
+    echo "Temporary database found: remove.\n";
 
     if (!@unlink($tmp_db)) {
-        echo "Error : Can't remove temporary database\n";
-        exit(0);
+        echo "Error: Can't remove temporary database\n";
+        exit;
     }
 }
 
-
 // 2 - Create the new database
-$idx = sqlite_open($tmp_db, 0666);
+try {
+    $db = new SQLite3($tmp_db);
+    /* Didn't throw exception at some point? */
+    if (!$db) {
+        throw Exception("Cant open $tmp_db");
+    }
 
-if (!$idx) {
-    die("could not open $tmp_name");
+} catch(Exception $e) {
+    echo $e->getMessage();
+    echo "Could not open $tmp_db";
+    exit;
 }
-sqlite_query($idx, $CREATE);
+
+$db->exec($CREATE);
 
 // 3 - Fill in the description table while cleaning the langs
 // without revision.xml file
@@ -527,26 +469,22 @@ foreach ($LANGS as $id => $lang) {
 do_revcheck();
 
 // 4:1 - Recurse in the manuel seeking for old files for each language and fill $SQL_BUFF
-
 foreach ($LANGS as $lang) {
- check_old_files('', $lang);
+    check_old_files('', $lang);
 }
 
 // 5 - Query $SQL_BUFF and exit
-
-sqlite_query($idx, 'BEGIN TRANSACTION');
-sqlite_query($idx, $SQL_BUFF);
-sqlite_query($idx, 'COMMIT');
-sqlite_close($idx);
+$db->exec('BEGIN TRANSACTION');
+$db->exec($SQL_BUFF);
+$db->exec('COMMIT');
+$db->close();
 
 echo "Copying temporary database to final database\n";
 
 copy($tmp_db, $db_name);
 @unlink($tmp_db);
 
-$time_end = getmicrotime();
-$time = $time_end - $time_start;
+$time = microtime(true) - $time_start;
 
-echo "Time of generation : " . $time . " s\n";
+echo "Time of generation: $time s\n";
 echo "End\n";
-exit(1);
